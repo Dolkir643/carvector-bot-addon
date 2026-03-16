@@ -8,7 +8,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ErrorEvent
+from aiogram.exceptions import TelegramNetworkError
 
 from parser import CarVectorParser
 from storage import add_order
@@ -65,11 +66,13 @@ def _get_shown_offers(result: dict) -> list:
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id if message.from_user else 0
+    logging.info("Получен /start от user_id=%s", user_id)
     user_state.pop(user_id, None)
 
-    auth_msg = await message.answer("🔐 Авторизация...")
-    loop = asyncio.get_event_loop()
-    auth_result = await loop.run_in_executor(None, parser.authorize)
+    try:
+        auth_msg = await message.answer("🔐 Авторизация...")
+        loop = asyncio.get_event_loop()
+        auth_result = await loop.run_in_executor(None, parser.authorize)
     if auth_result:
         parser.is_authorized = True  # явно в основном потоке, чтобы поиск видел авторизацию
         await auth_msg.edit_text(
@@ -86,6 +89,12 @@ async def cmd_start(message: types.Message):
             f"❌ Ошибка авторизации. {hint}\n\n"
             "Если бот на Railway — сайт CarVector может блокировать серверные IP. Запустите локально или на домашнем NUC."
         )
+    except Exception as e:
+        logging.exception("Ошибка в /start: %s", e)
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
 
 
 # ---------- Кнопка «Оформить заявку» ----------
@@ -165,6 +174,7 @@ async def cb_order_cancel(callback: CallbackQuery):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id if message.from_user else 0
     text = (message.text or "").strip()
+    logging.info("Получено сообщение от user_id=%s: %r", user_id, text[:50] if text else "")
     state = user_state.get(user_id) or {}
 
     if state.get("state") in ("offer_num", "quantity", "phone"):
@@ -351,24 +361,39 @@ async def handle_contact(message: types.Message):
     await _send_order_confirm(message, user_id, state, draft, phone)
 
 
+@dp.error()
+async def error_handler(event: ErrorEvent):
+    """Ловим любые необработанные исключения в хендлерах, чтобы бот не падал."""
+    logging.exception("Необработанная ошибка в обработчике: %s", event.exception)
+
+
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     if TELEGRAM_MANAGER_CHAT_ID:
         logging.info("Уведомления о заявках → chat_id %s", TELEGRAM_MANAGER_CHAT_ID)
     else:
         logging.warning("TELEGRAM_MANAGER_CHAT_ID не задан — заявки не будут дублироваться менеджеру")
     logging.info("Бот запущен (LAND ROVER, заявки в data/orders.json)")
 
-    # Проверка токена: если неверный — увидим ошибку в логах
-    try:
-        me = await bot.get_me()
-        logging.info("Токен OK, бот: @%s (id=%s)", me.username, me.id)
-    except Exception as e:
-        logging.error("Токен неверный или нет сети к Telegram: %s", e)
-        raise
+    # Даём контейнеру время поднять сеть/DNS
+    await asyncio.sleep(20)
 
-    await dp.start_polling(bot)
+    while True:
+        try:
+            await dp.start_polling(bot)
+        except TelegramNetworkError as e:
+            logging.warning("Нет связи с Telegram (api.telegram.org). Повтор через 60 с: %s", e)
+            await asyncio.sleep(60)
+        except (TimeoutError, asyncio.TimeoutError, OSError, ConnectionError) as e:
+            logging.warning("Сетевая ошибка. Повтор через 60 с: %s", e)
+            await asyncio.sleep(60)
+        except Exception as e:
+            logging.exception("Ошибка polling, повтор через 60 с: %s", e)
+            await asyncio.sleep(60)
+        else:
+            break
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
