@@ -65,11 +65,13 @@ def _get_shown_offers(result: dict) -> list:
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id if message.from_user else 0
+    logging.info("Получен /start от user_id=%s", user_id)
     user_state.pop(user_id, None)
 
-    auth_msg = await message.answer("🔐 Авторизация...")
-    loop = asyncio.get_event_loop()
-    auth_result = await loop.run_in_executor(None, parser.authorize)
+    try:
+        auth_msg = await message.answer("🔐 Авторизация...")
+        loop = asyncio.get_event_loop()
+        auth_result = await loop.run_in_executor(None, parser.authorize)
     if auth_result:
         parser.is_authorized = True  # явно в основном потоке, чтобы поиск видел авторизацию
         await auth_msg.edit_text(
@@ -86,6 +88,12 @@ async def cmd_start(message: types.Message):
             f"❌ Ошибка авторизации. {hint}\n\n"
             "Если бот на Railway — сайт CarVector может блокировать серверные IP. Запустите локально или на домашнем NUC."
         )
+    except Exception as e:
+        logging.exception("Ошибка в /start: %s", e)
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
 
 
 # ---------- Кнопка «Оформить заявку» ----------
@@ -165,6 +173,7 @@ async def cb_order_cancel(callback: CallbackQuery):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id if message.from_user else 0
     text = (message.text or "").strip()
+    logging.info("Получено сообщение от user_id=%s: %r", user_id, text[:50] if text else "")
     state = user_state.get(user_id) or {}
 
     if state.get("state") in ("offer_num", "quantity", "phone"):
@@ -352,7 +361,7 @@ async def handle_contact(message: types.Message):
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     if TELEGRAM_MANAGER_CHAT_ID:
         logging.info("Уведомления о заявках → chat_id %s", TELEGRAM_MANAGER_CHAT_ID)
     else:
