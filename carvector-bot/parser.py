@@ -34,10 +34,6 @@ class CarVectorParser:
             "Origin": self.BASE_URL,
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
         })
         self.is_authorized = False
 
@@ -54,8 +50,6 @@ class CarVectorParser:
 
             soup = BeautifulSoup(main_page.text, "html.parser")
             login_data = self._get_login_form_data(soup)
-            # Небольшая пауза перед POST (снижает срабатывание антибота на датацентровых IP)
-            time.sleep(1.5)
             if not login_data:
                 # Fallback: типичные имена полей для carvector.ru
                 login_data = {"login": self.username, "pass": self.password, "go": "Вход"}

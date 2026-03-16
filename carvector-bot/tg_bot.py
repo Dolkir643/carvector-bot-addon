@@ -358,17 +358,9 @@ async def main():
     else:
         logging.warning("TELEGRAM_MANAGER_CHAT_ID не задан — заявки не будут дублироваться менеджеру")
     logging.info("Бот запущен (LAND ROVER, заявки в data/orders.json)")
-
-    # Проверка токена: если неверный — увидим ошибку в логах
-    try:
-        me = await bot.get_me()
-        logging.info("Токен OK, бот: @%s (id=%s)", me.username, me.id)
-    except Exception as e:
-        logging.error("Токен неверный или нет сети к Telegram: %s", e)
-        raise
-
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

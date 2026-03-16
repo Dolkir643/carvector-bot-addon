@@ -1,0 +1,26 @@
+name: "CarVector Bot"
+version: "1.0.0"
+slug: "carvector_bot"
+description: "Telegram-бот для подбора запчастей LAND ROVER (carvector.ru)"
+arch:
+  - amd64
+startup: services
+boot: auto
+init: false
+advanced: true
+
+map:
+  - data:rw
+
+options:
+  bot_token: "ВАШ_ТОКЕН"
+  carvector_login: "paseca@my.com"
+  carvector_password: "RangeRover2026"
+  manager_chat_id: "232066339"
+
+schema:
+  bot_token: str
+  carvector_login: str
+  carvector_password: str
+  manager_chat_id: str
+
